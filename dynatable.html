@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Dynatable</title>
+
+        <style>
+			
+			table {
+				border: 1px solid grey;
+			}
+			
+			table td {
+				border: 1px dashed #c0c0c0;
+			}
+			
+			.keyname {
+				font-weight: bold;
+			}
+			
+			.equal {
+				color: green;
+			}
+			
+			.different {
+				color: red;
+			}
+			
+			.equal-or-null {
+				color: #238ce8;
+			}
+			
+			.nullvalue {
+				text-decoration: italic;
+				background-color: #dedede;
+			}
+        </style>
+
+        <script src="jquery.min.js"></script>
+		<script src="jquery-ui.min.js"></script>
+	
+		<link rel="stylesheet" href="jquery-ui.min.css">
+		<link rel="stylesheet" href="jquery-ui.structure.min.css">
+		<link rel="stylesheet" href="jquery-ui.theme.min.css">
+    </head>
+    <body>
+		
+		<textarea id="objin" rows="10" cols="80">
+{
+  "type": "way",
+  "id": 61195113,
+  "tags": {
+    "attribution": "Fresno_County_GIS",
+    "landuse": "vineyard",
+    "source": "http://www.co.fresno.ca.us/%5Cdepartmentpage.aspx?id=16313"
+  }
+}
+</textarea>
+<input type="button" value="append from JSON" id="append_button">
+<hr/>
+<input type="text" id="idlist"/><input type="button" value="query for id" id="idlist_button"><br/>
+<textarea id="overpassquery" rows="10" cols="80">
+[out:json]
+[timeout:25]
+;
+(
+  way
+    ["natural"="water"](52.30711418148015,9.741911888122559,52.33227088088225,9.797701835632324);
+);
+out body;
+</textarea>
+<input type="button" value="append from Overpass API" id="overpass_button">
+<hr/>
+<input type="button" value="clear all" id="clear_button"> - <input type="button" value="style table" id="style_button">
+<hr/>
+		
+		
+		<table id="resultstable">
+			<tbody>
+				<tr>
+					<td>i am empty</td>
+				</tr>
+			</tbody>
+		</table>
+		
+		
+        <script>
+		
+			var store = {};
+			
+			var numOfDatasets = 0;
+			
+			var NULLString = "NULL"
+			
+			var addToStore = function(key,value,idx) {
+				if (!store[key]) {
+					store[key] = {};
+				}
+				store[key][idx] = value;
+			}
+			
+            $("#append_button").on('click', function() {
+				var j = JSON.parse($("#objin").val());
+				appendRowData( j.tags, j.id );
+			});
+			
+			$("#overpass_button").on('click', function() {
+				ajaxRequestToAPIAndDisplay();
+			});
+			
+			$("#clear_button").on('click', function() {
+				clear();
+				$("#resultstable tr").remove();
+				$('#resultstable > tbody:last-child').append("<tr><td>i am again empty</td></tr>");
+			});
+			
+			$("#style_button").on('click', function() {
+				styleTable();
+			});
+			
+			$("#idlist_button").on('click', function() {
+				var qry_pre  = "[out:json][timeout:25];(";
+				var qry_post = "); out tags;";
+				var qry_in = "";
+				var ids = $("#idlist").val().split(",");
+				
+				for (var i=0;i<ids.length;i++) {
+					//console.log(ids[i]);
+					qry_in += ids[i].replace("n","node(").replace("w","way(").replace("r","rel(")
+					qry_in +=  ");"
+					//console.log(qry_in);
+				}
+				
+				$("#overpassquery").val(qry_pre + qry_in + qry_post)
+			});
+			
+			var clear = function() {
+				store = {};
+				numOfDatasets = 0;
+				//$('#resultstable > tbody:last-child').append("<tr><td>i am again empty</td></tr>");
+			}
+			
+			var appendRowData = function(rowdata, id) {
+				$("#resultstable tr").remove();
+				addToStore("osmid",id,numOfDatasets);
+				for (var k in rowdata) {
+					addToStore(k,rowdata[k],numOfDatasets);
+					//console.log(k + "="+rowdata[k]);
+				}
+				numOfDatasets++;
+				drawTableFromStore();
+			}
+			var drawTableFromStore = function() {
+				var headerrow = "<tr><th>&nbsp;</th>";
+				for (var i=0;i<numOfDatasets;i++) {
+					headerrow += "<th>"+store.osmid[i]+"</th>";
+				}
+				headerrow += "</tr>";
+				$('#resultstable > tbody:last-child').append(headerrow);
+
+				for (var storekey in store) {
+					if (storekey == "osmid") {
+						continue;
+					}
+					var thisrow = "<tr><td class='keyname'>"+storekey+"</td>";
+					for (var i=0;i<numOfDatasets;i++) {
+						if (store[storekey][i]) {
+							thisrow += "<td>"+store[storekey][i]+"</td>";
+						} else {
+							thisrow += "<td>"+NULLString+"</td>";
+						}
+					}
+					thisrow += "</tr>";
+					//console.log(thisrow);
+					$('#resultstable > tbody:last-child').append(thisrow);
+				}
+			}
+			
+			var ajaxRequestToAPIAndDisplay = function () {
+				$.ajax( {
+					  url: "https://overpass-api.de/api/interpreter",
+					  data: { data: $("#overpassquery").val() },
+					  jsonp: 'jsonp',
+					  dataType: 'jsonp',
+					  success: function(data,status,xhr) {
+							if (data == undefined) {
+								// should not be reached
+								console.log("Barf!");
+							} else {
+								$.each(data.elements,
+									function(i,v) {
+										appendRowData(v.tags, v.id);
+									}
+								); // end each
+							}
+					  } // end success
+				}) // end ajax
+			}
+			
+			var styleTable = function() {
+				var rows = $("#resultstable tr:has(td)");
+				for (var i=0;i<rows.length;i++) {
+					var seen = {};
+					for (var ii=1;ii<rows[i].childNodes.length;ii++) {
+						// each td
+						seen[rows[i].childNodes[ii].textContent] = 1;
+						if (rows[i].childNodes[ii].textContent == NULLString) {
+							$(rows[i].childNodes[ii]).addClass("nullvalue");
+						}
+					}
+					//console.log(seen);
+					//console.log(Object.keys(seen).length);
+					if (Object.keys(seen).length > 1){
+						delete (seen[NULLString]);
+						if (Object.keys(seen).length > 1){
+							// >1 real values
+							$(rows[i].childNodes).removeClass("equal");
+							$(rows[i].childNodes).removeClass("equal-or-null");
+							$(rows[i].childNodes).addClass("different");
+						} else {
+							// only NULLString and 1 other value
+							$(rows[i].childNodes).removeClass("equal");
+							$(rows[i].childNodes).removeClass("different");
+							$(rows[i].childNodes).addClass("equal-or-null");
+						}
+					} else {
+						// only 1 value == all equal
+						$(rows[i].childNodes).removeClass("different");
+						$(rows[i].childNodes).removeClass("equal-or-null");
+						$(rows[i].childNodes).addClass("equal");
+					}
+				}
+				
+			
+			}; // end function styleTable
+				//$("#resultstable td:not(.keyname)").addClass("equal");
+			
+        </script>
+    </body>
+</html>
