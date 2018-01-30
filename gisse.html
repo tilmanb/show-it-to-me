@@ -1,0 +1,47 @@
+<html>
+<head>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/openlayers/2.11/OpenLayers.js"></script>
+
+<script>
+  function init() {
+    map = new OpenLayers.Map("basicMap");
+    var mapnik         = new OpenLayers.Layer.OSM();
+    var fromProjection = new OpenLayers.Projection("EPSG:4326");   // Transform from WGS 1984
+    var toProjection   = new OpenLayers.Projection("EPSG:900913"); // to Spherical Mercator Projection
+    var position       = new OpenLayers.LonLat(77.5656523,22.545454).transform( fromProjection, toProjection);
+    var zoom           = 3; 
+
+    map.addLayer(mapnik);
+    map.setCenter(position, zoom ); 
+
+    var markers = new OpenLayers.Layer.Markers( "Markers" );
+    map.addLayer(markers);
+
+    //var lonLat = new OpenLayers.LonLat( 77.1279688 ,51.5043436 );        
+	//var lonLat = new OpenLayers.LonLat( 77.1279688 ,51.5043436 ).transform( fromProjection, toProjection);        
+	var lonLat = new OpenLayers.LonLat( 19 ,51 ).transform( fromProjection, toProjection);        
+
+        var size = new OpenLayers.Size(30,30);
+        var offset = new OpenLayers.Pixel(-(size.w/2), -size.h);
+        var icon = new OpenLayers.Icon('https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/Arrivals_ecomo.svg/500px-Arrivals_ecomo.svg.png', size, offset);
+    var marker = new OpenLayers.Marker(lonLat,icon);
+        markers.addMarker(marker);
+
+     marker.events.register("click", marker, function(e){
+     popup = new OpenLayers.Popup.FramedCloud("",
+                           marker.lonlat,
+                           new OpenLayers.Size(200, 200),
+                           "here lies your information",
+                           null, true);
+
+      map.addPopup(popup);
+    }); 
+
+      }
+</script>
+
+</head>
+<body onload="init()">
+<div id="basicMap"/>
+</body>
+</html>
