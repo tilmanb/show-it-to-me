@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Show It To Me</title>
+
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+            }
+
+            html, body {
+                width: 100%;
+                height: 100%;
+            }
+
+            #map {
+                width: 50%;
+                height: 90%;
+				float: left;
+            }
+			
+			#tabs {
+				float: left;
+				margin: 5px;
+				width: 400px;
+			}
+			
+			#commonsquery {
+				//float: left;
+				//margin: 5px;
+				//width: 400px;
+			}
+			
+			#commonsimage {
+				position: fixed;
+				display:block;
+				top: 2em;
+				right: 2em;
+			}
+			
+			.list {
+				font-size: 9pt;
+				font-family: sans-serif;
+				padding-left: 10px;			
+			}
+			
+			.selected {
+				font-weight: bold;
+			}
+			
+			#overpass-out-debug {
+				font-size: 10pt;
+			}
+        </style>
+
+        <script src="jquery.min.js"></script>
+
+        <link rel="stylesheet" href="leaflet.css">
+        <script src="leaflet.js"></script>
+
+        <script src="leaflet.restoreview.js"></script>
+
+        <script src="leaflet.hash.js"></script>
+
+        <link rel="stylesheet" href="leaflet.history.css">
+        <script src="leaflet.history.js"></script>
+
+        <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="leaflet.locate.min.css">
+        <!--[if lt IE 9]>
+            <link rel="stylesheet" href="leaflet.locate.ie.min.css">
+        <![endif]-->
+        <script src="leaflet.locate.min.js"></script>
+
+        <link rel="stylesheet" href="leaflet.geocoder.css">
+        <script src="leaflet.geocoder.js"></script>
+
+        <link rel="stylesheet" href="leaflet.measure.css">
+        <script src="leaflet.measure.js"></script>
+
+        <link rel="stylesheet" href="leaflet.editinosm.css">
+        <script src="leaflet.editinosm.js"></script>
+		
+		<link rel="stylesheet" href="jquery-ui.min.css">
+		<link rel="stylesheet" href="jquery-ui.structure.min.css">
+		<link rel="stylesheet" href="jquery-ui.theme.min.css">
+		
+		<script src="jquery-ui.min.js"></script>
+    </head>
+    <body>
+		
+        <div id="map"></div>
+		
+		<div id="tabs">
+			<ul>
+				<li><a href="#tabs-1">Commons Query</a></li>
+				<li><a href="#tabs-2">Commons CatSearch</a></li>
+				<li><a href="#tabs-3">Overpass API</a></li>
+			</ul>
+			<div id="tabs-1">
+				<div id="#commonsquery">
+					Lat: <span id="lat"></span><br/>
+					Lng: <span id="lng"></span><br/>
+					<input type="text" id="radius" value="500"><br/>
+					<input type="button" id="query_commons" value="query Commons for images">
+					<div id="imagelist"></div>
+				</div>
+			</div>
+			<div id="tabs-2">
+				<input type="button" id="queryCategories" value="Query"/> categories for selected image
+				<div id="categorylist">(no query yet)</div>
+				<div id="imagesincategory">
+					<input type="button" id="queryImagesInCategory" value="Query"/> images in selected category
+					<div id="imagesincategorylist"></div>
+				</div>
+			</div>
+			<div id="tabs-3">
+				<input type="button" id="overpassQuery" value="Query"/> Overpass query
+				<select id="overpass-keys">
+					<option value="natural">natural</option>
+					<option value="highway">highway</option>
+					<option value="amenity">amenity</option>
+					<option value="leisure">leisure</option>
+					<option value="landuse">landuse</option>
+					<!--
+					<option value=""></option>
+					-->
+				</select>
+				<div id="overpass-out">
+					<p id="overpass-out-debug">&nbsp;</p>
+					<a id="overpass-turbo-link" href="#">[ot]</a>
+				</div>
+			</div>
+		</div>
+	
+	
+		<div id="commonsimage">(no image yet)</div>
+		
+        <script>
+            L.QuadKeyTileLayer = L.TileLayer.extend({
+                getTileUrl: function (tilePoint) {
+                    this._adjustTilePoint(tilePoint);
+                    return L.Util.template(this._url, {
+                        s: this._getSubdomain(tilePoint),
+                        q: this._quadKey(tilePoint.x, tilePoint.y, this._getZoomForUrl())
+                    });
+                },
+                _quadKey: function (x, y, z) {
+                    var quadKey = [];
+                    for (var i = z; i > 0; i--) {
+                        var digit = '0';
+                        var mask = 1 << (i - 1);
+                        if ((x & mask) != 0) {
+                            digit++;
+                        }
+                        if ((y & mask) != 0) {
+                            digit++;
+                            digit++;
+                        }
+                        quadKey.push(digit);
+                    }
+                    return quadKey.join('');
+                }
+            });
+
+            var osmMapnik = new L.TileLayer(
+                'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                {
+                    minZoom: 3,
+                    maxZoom: 19,
+                    attribution: 'Map data © OpenStreetMap contributors'
+                }
+            );
+
+            var osmOpenTopoMap = new L.TileLayer(
+                'http://server.opentopomap.org/{z}/{x}/{y}.png',
+                {
+                    minZoom: 3,
+                    maxZoom: 16,
+                    maxNativeZoom: 15,
+                    attribution: 'Kartendaten: &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende, <a href="http://viewfinderpanoramas.org">SRTM</a> | Kartendarstellung: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+                }
+            );
+
+
+            var bingAerial = new L.QuadKeyTileLayer(
+                'http://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}?g=737&n=z',
+                {
+                    subdomains: "0123",
+                    minZoom: 3,
+                    maxZoom: 19,
+                    attribution: "<a href=\'http://maps.bing.com/\'>Bing</a> map data copyright Microsoft and its suppliers"
+                }
+            );
+
+            var hillshading = new L.TileLayer(
+                'http://c.tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png',
+                {
+                    attribution: "Hillshading by ??? from NASA SRTM data",
+                    minZoom: 3,
+                    maxZoom: 16,
+                    overlay: true
+                }
+            );
+
+            var map = L.map('map', {
+                layers: [osmMapnik],
+                editInOSMControlOptions: {
+                    position: "bottomright",
+                    zoomThreshold: 16,
+                    widget: "attributionBox",
+                    editors: ["josm"]
+                },
+            });
+			
+
+
+            var baseMaps = {
+                "OpenStreetMap": osmMapnik,
+                "OpenTopoMap": osmOpenTopoMap,
+                "Bing Aerial View": bingAerial
+            };
+
+            var overlayMaps = {
+                "Hillshading": hillshading
+            };
+
+            if (!map.restoreView()) {
+                map.setView([53, 11], 7); // Somewhere in Europe
+            }
+
+            new L.Hash(map);
+
+            new L.HistoryControl({
+                maxMovesToSave: 100
+            }).addTo(map);
+
+            L.control.layers(baseMaps, overlayMaps).addTo(map);
+            L.control.scale().addTo(map);
+
+            L.control.locate({
+                icon: 'fa fa-location-arrow',
+                showPopup: false
+            }).addTo(map);
+
+            new L.Control.Measure({
+                position: 'topleft',
+                measureUnit: 'km'
+            }).addTo(map);
+
+            var geocoder = new L.Control.Geocoder({
+                position: "topleft"
+            }).addTo(map);
+			
+			//XXX
+			
+			$( "#tabs" ).tabs();
+			$("#imagesincategory").hide();
+			
+			var GEOQUERY_RADIUS = 250;
+			var LIMIT_RESULTS_TO = 500;
+			var CIRCLE_OPACITY = 0.5;
+			var CIRCLE_FILL = 0.5;
+			
+			var commonsImages;
+			var commonsCategories;
+			var selectedImage;
+			var selectedCategory;
+			
+			var queryCircle = L.circle([0,0],0, { opacity: CIRCLE_OPACITY, fill: CIRCLE_FILL } );
+			queryCircle.addTo(map);
+			
+			var queryRect = L.rectangle([[0,0],[0,0]], {color: "darkgrey", fill: false, opacity: 0, clickable: false});
+			queryRect.addTo(map);
+			
+			var imageMarker = L.marker([0,0]).addTo(map);
+			
+			map.on('click', function(e) {
+				mapclick(e.latlng);
+			});
+			
+			$("#radius").on('keyup', function() {
+				GEOQUERY_RADIUS = $("#radius").val();
+				queryCircle.setRadius(GEOQUERY_RADIUS);
+				queryRect.setBounds(queryCircle.getBounds());
+				updateOverpassQuery();
+				});
+				
+			$("#overpass-keys").on('change', function() {
+				updateOverpassQuery();
+			});
+			
+			var imageNameClicked = function() {
+				// clear previous image
+				if (selectedImage != undefined) {
+					// reset css
+					$("#imagelist li:contains('"+selectedImage.title+"')").removeClass("selected");
+					$("#imagesincategorylist li:contains('"+selectedImage.title+"')").removeClass("selected");
+					// remove category list of previous image
+					$("#categorylist").html("(no query yet)");
+				}
+				//hide images in category panel
+				//$("#imagesincategory").hide();
+				//enable query categories button
+				$("#queryCategories").prop("disabled",false);
+				//set selected image
+				selectedImage = commonsImages[$(this).text()];
+                //XXX fails with " in name
+				$('#imagelist li:contains("'+selectedImage.title+'")').addClass("selected");
+				$('#imagesincategorylist li:contains("'+selectedImage.title+'")').addClass("selected");
+				//display thumb
+				var i = "<a href='"+selectedImage.descpage+"'><img src='"+selectedImage.thumb+"'/></a><p><small>"+selectedImage.artist+"</small></p>";
+				$("#commonsimage").html(i);
+				//set marker
+				var ll = selectedImage.latlng;
+				if (ll != undefined) {
+					imageMarker.setLatLng(ll);
+				} else {
+					$(this).css("color","red");
+				}
+				
+			};
+			
+			var categoryNameClicked = function() {
+				// clear previous category
+				if (selectedCategory != undefined) {
+					// reset css
+					$("#categorylist li:contains('"+selectedCategory.title+"')").removeClass("selected");
+					
+				} else {
+					// no previously selected category->enable query for images in category
+					$("#imagesincategory").toggle("blind");
+				}
+				selectedCategory = commonsCategories[$(this).text()];
+				$('#categorylist li:contains("'+selectedCategory.title+'")').addClass("selected");
+				$("#imagesincategorylist").html("(no query yet)");
+			};
+			
+			var mapclick = function(latlng) {
+				var lat = latlng.lat;
+				var lng = latlng.lng;
+				$("#lat").text(lat.toFixed(6));
+				$("#lng").text(lng.toFixed(6));
+				queryCircle.setLatLng(latlng);
+				queryCircle.setRadius(GEOQUERY_RADIUS);
+				queryRect.setBounds(queryCircle.getBounds());
+				//$("#overpass-out-debug").text(queryCircle.getBounds()lat+","+);
+				//$("#overpass-out-debug").text(
+				updateOverpassQuery();
+			}
+			
+			var updateOverpassQuery = function() {
+				var ot_bbox = "("+
+				    queryCircle.getBounds().getSouthWest().lat.toFixed(6) +"," + queryCircle.getBounds().getSouthWest().lng.toFixed(6) + ","
+				  + queryCircle.getBounds().getNorthEast().lat.toFixed(6) +"," + queryCircle.getBounds().getNorthEast().lng.toFixed(6)
+				  +")";
+				var ot_query = "[out:json][timeout:25];(";
+				// objects with name and chosen key
+				["node","way","relation"].forEach( function(osmtype) {
+					ot_query += osmtype+"[\"name\"][\""+$("#overpass-keys").val()+"\"]"+ot_bbox+";";
+				});
+				// objects with image tag
+				["node","way","relation"].forEach( function(osmtype) {
+					ot_query += osmtype+"[\"image\"]"+ot_bbox+";";
+				});
+				ot_query += ");out tags;";
+				$("#overpass-out-debug").text(ot_query);
+				
+				$("#overpass-turbo-link").attr("href","http://overpass-turbo.eu?R=1&Q=" + ot_query.replace(/out (ids|tags);/,"/*recurse for display*/(._;>;);out body;"));
+			}
+			
+			var queryImageInformation = function(imageArray) {
+				var imagesString = imageArray.join("|");
+				console.log(imagesString);
+				$.ajax( {
+				  url: "https://commons.wikimedia.org/w/api.php",
+				  data: {	action:'query',
+					titles: imagesString,
+					prop:'imageinfo|coordinates',
+					iilimit:LIMIT_RESULTS_TO,
+					iiprop:'url|extmetadata',
+					iiurlwidth:200,
+					iiurlheight:200,
+					colimit:LIMIT_RESULTS_TO,
+					coprimary: 'all',
+					format:'json',
+				  },
+				  jsonp: 'callback',
+				  dataType: 'jsonp',
+				  success: function(data,status,xhr) {
+						var txt = "";
+						if (data.query == undefined) {
+							// should not be reached
+							console.log("Barf! No images???");
+						} else {
+							$.each(data.query.pages,
+								function(i,v) {
+									fillImageInfo(v);
+								}
+							); // end each
+						}
+				  }, // end success
+				}) // end ajax
+			}
+			
+			// stores in global commonsImages hash
+			var fillImageInfo = function(apiResultForPage) {
+				var ll,a;
+				var thumburl = "images/crystal_error.png";
+				var descurl = "https://commons.wikimedia.org";
+				if (apiResultForPage.coordinates != undefined) {
+					ll = new L.LatLng(apiResultForPage.coordinates[0].lat, apiResultForPage.coordinates[0].lon)
+				}
+				if (apiResultForPage.imageinfo != undefined) {
+					thumburl = apiResultForPage.imageinfo[0].thumburl;
+					descurl  = apiResultForPage.imageinfo[0].descriptionurl;
+					if (apiResultForPage.imageinfo[0].extmetadata != undefined) {
+						if (ll == undefined) {
+							// no camera location given -> use location from extmetadata if exists
+							if (apiResultForPage.imageinfo[0].extmetadata.GPSLatitude != undefined) {
+								ll = new L.LatLng(apiResultForPage.imageinfo[0].extmetadata.GPSLatitude.value, apiResultForPage.imageinfo[0].extmetadata.GPSLongitude.value);
+							} else {
+								ll = [0,0];
+							}
+						}
+						if (apiResultForPage.imageinfo[0].extmetadata.Artist != undefined) {
+							a = apiResultForPage.imageinfo[0].extmetadata.Artist.value;
+						} else {
+							a = "undefined, see description page";
+						}
+					}
+				}
+				
+				commonsImages[apiResultForPage.title] = { title: apiResultForPage.title, thumb: thumburl, descpage: descurl, latlng: ll, artist: a};
+			};
+			
+			$("#query_commons").on('click', function() {
+				imageMarker.setLatLng([0,0]);
+				$("#imagelist").html('<img src="images/throbber.gif">');
+                $("#imagesincategorylist").html('(no query yet)');
+				$.ajax( {
+				  url: "https://commons.wikimedia.org/w/api.php",
+				  data: {	action:'query',
+					generator:'geosearch',
+					ggsprimary:'all',
+					ggsnamespace:'6',
+					ggsradius:GEOQUERY_RADIUS,
+					ggscoord:$("#lat").text() + '|'+$("#lng").text(),
+					ggslimit:LIMIT_RESULTS_TO,
+					prop:'imageinfo|coordinates',
+					iilimit:LIMIT_RESULTS_TO,
+					iiprop:'url|extmetadata',
+					iiurlwidth:200,
+					iiurlheight:200,
+					colimit:LIMIT_RESULTS_TO,
+					coprimary: 'all',
+					format:'json',
+				  },
+				  jsonp: 'callback',
+				  dataType: 'jsonp',
+				  success: function(data,status,xhr) {
+						var txt = "";
+						if (data.query == undefined) {
+							$("#imagelist").html("<i>no images found</i>");
+						} else {
+							txt += "<ul class='list'>";
+							commonsImages = {};
+							$.each(data.query.pages,
+								function(i,v) {
+									fillImageInfo(v);
+									// append title to list
+									txt += "<li>"+v.title+"</li>";
+								}
+							); // end each
+							txt += "</ul>";
+							$("#imagelist").html(txt);
+							$("#imagelist li").on('click', imageNameClicked);
+						}
+				  },
+				}) // end ajax
+			}); // end onclick handler
+			
+			$("#queryCategories").on('click', function() {
+				$("#categorylist").html('<img src="images/throbber.gif">');
+				var txt = "<ul class='list'>";
+				$.ajax( {
+				//api.php?action=query&titles=Image:Commons-logo.svg&prop=categories
+				  url: "https://commons.wikimedia.org/w/api.php",
+				  data: {	
+					action:'query',
+					titles:selectedImage.title,
+					prop:'categories',
+					clshow:'!hidden',
+					format:'json',
+				  },
+				  jsonp: 'callback',
+				  dataType: 'jsonp',
+				  success: function(data,status,xhr) {
+				    // disable
+				    $("#queryCategories").prop("disabled",true);
+					commonsCategories = {}
+					$.each(data.query.pages, function(i,page) {
+						$.each(page.categories, function(ii,cat) {
+							txt += "<li>"+cat.title+"</li>";
+							commonsCategories[cat.title] = { title: cat.title,};
+						});
+					}); // end each pages
+					txt += "</ul>";
+					$("#categorylist").html(txt);
+					$("#categorylist li").on('click', categoryNameClicked);
+					
+				  } // end success
+				}); // end ajax
+			}); // end onclick
+			
+			$("#queryImagesInCategory").on('click', function() {
+				$("#imagesincategorylist").html('<img src="images/throbber.gif">');
+				var txt = "<ul class='list'>";
+				$.ajax( {
+				//action=query&list=categorymembers&cmtype=file|subcat&cmtitle=%s&format=json&cmlimit=%d
+				  url: "https://commons.wikimedia.org/w/api.php",
+				  data: {	
+					action:'query',
+					list:'categorymembers',
+					cmtype: 'file|subcat',
+					cmtitle:selectedCategory.title,
+					format:'json',
+				  },
+				  jsonp: 'callback',
+				  dataType: 'jsonp',
+				  success: function(data,status,xhr) {
+					
+					leftoverImages = Array()
+					$.each(data.query.categorymembers, function(i,categorymember) {
+						txt += "<li>"+categorymember.title+"</li>";
+						if (commonsImages[categorymember.title] == undefined) {
+							leftoverImages = leftoverImages.concat(categorymember.title);
+						}
+						}); // end each categorymember
+					txt += "</ul>";
+					
+					queryImageInformation(leftoverImages);
+					
+					$("#imagesincategorylist").html(txt);
+					$("#imagesincategorylist li").on('click', imageNameClicked);
+				  } // end success
+				}); // end ajax
+			}); // end onclick
+			
+			$("#tabs").on('tabsactivate', function(evt,ui) {
+				if (ui.newTab.text() == "Overpass API") {
+					// Overpass-Tab aktiv
+					queryRect.setStyle({opacity: 1});
+					queryCircle.setStyle({fill: false, opacity: 0});
+				} else {
+					// anderer Tab aktiv
+					queryRect.setStyle({opacity: 0});
+					queryCircle.setStyle({fill: true, opacity: CIRCLE_OPACITY});
+				}
+			});
+			
+			//https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=Steinberg&gsrnamespace=6&prop=info&gsrlimit=30
+			
+        </script>
+    </body>
+</html>
