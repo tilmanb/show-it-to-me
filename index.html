@@ -95,7 +95,7 @@
 		
 		<div id="tabs">
 			<ul>
-				<li><a href="#tabs-1">Commons Query</a></li>
+				<li><a href="#tabs-1">Image Query</a></li>
 				<li><a href="#tabs-2">Commons CatSearch</a></li>
 				<li><a href="#tabs-3">Overpass API</a></li>
 			</ul>
@@ -104,7 +104,8 @@
 					Lat: <span id="lat"></span><br/>
 					Lng: <span id="lng"></span><br/>
 					<input type="text" id="radius" value="500"><br/>
-					<input type="button" id="query_commons" value="query Commons for images">
+					<input type="button" id="query_commons" value="query Commons for images"/><br/>
+                    <input type="button" id="query_mapillary" value="query mapillary for images"/>
 					<div id="imagelist"></div>
 				</div>
 			</div>
@@ -164,6 +165,30 @@
                     return quadKey.join('');
                 }
             });
+
+            // from https://www.mapbox.com/mapbox.js/example/v1.0.0/rotating-controlling-marker/
+
+            L.RotatedMarker = L.Marker.extend({
+              options: { angle: 0 },
+              _setPos: function(pos) {
+                L.Marker.prototype._setPos.call(this, pos);
+                if (L.DomUtil.TRANSFORM) {
+                  // use the CSS transform rule if available
+                  this._icon.style[L.DomUtil.TRANSFORM] += ' rotate(' + this.options.angle + 'deg)';
+                } else if (L.Browser.ie) {
+                  // fallback for IE6, IE7, IE8
+                  var rad = this.options.angle * L.LatLng.DEG_TO_RAD,
+                  costheta = Math.cos(rad),
+                  sintheta = Math.sin(rad);
+                  this._icon.style.filter += ' progid:DXImageTransform.Microsoft.Matrix(sizingMethod=\'auto expand\', M11=' +
+                    costheta + ', M12=' + (-sintheta) + ', M21=' + sintheta + ', M22=' + costheta + ')';
+                }
+              }
+            });
+            L.rotatedMarker = function(pos, options) {
+                return new L.RotatedMarker(pos, options);
+            };
+
 
             var osmMapnik = new L.TileLayer(
                 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -268,6 +293,8 @@
 			var commonsCategories;
 			var selectedImage;
 			var selectedCategory;
+
+            var mapillaryLayer;
 			
 			var queryCircle = L.circle([0,0],0, { opacity: CIRCLE_OPACITY, fill: CIRCLE_FILL } );
 			queryCircle.addTo(map);
@@ -549,6 +576,57 @@
 				}); // end ajax
 			}); // end onclick
 			
+            $("#query_mapillary").on('click', function() {
+                $.ajax({
+                    url: "https://a.mapillary.com/v3/images",
+                    data: {
+                        client_id: "d3VjeGg1aGdZLVVTUjU1SjBwbmN2dzo4MjA2ZDYwMzg4NzJiMGQz",
+                        closeto: [$("#lng").text(),$("#lat").text()],
+                        radius: GEOQUERY_RADIUS
+                    },
+                    success: function(data,status,xhr) {
+                        if (map.hasLayer(mapillaryLayer)) {
+                            map.removeLayer(mapillaryLayer);
+                        }
+
+                        var geojsonMarkerOptions = {
+                            radius: 8,
+                            fillColor: "#ff7800",
+                            color: "#000",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        };
+
+                        var micon = L.icon({
+                            iconUrl: 'images/Dark_Green_Arrow_Up_16.png',
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8],
+                        });
+
+                        mapillaryLayer = L.geoJson(data, {
+                            pointToLayer: function (feature, latlng) {
+                                //return L.circleMarker(latlng, geojsonMarkerOptions);
+                                return L.rotatedMarker(latlng, {icon:micon, angle: feature.properties.ca});
+                            },
+                            onEachFeature: function(feature,layer) {
+                                layer.on('click', function() {
+                                    var i = feature.properties.key;
+                                    var i = '<a href="https://www.mapillary.com/app/?pKey='+ feature.properties.key +'&focus=photo"><img src="https://d1cuyjsrcm0gby.cloudfront.net/'+feature.properties.key+'/thumb-320.jpg"/></a>';
+                                        i += '<p>Image by '+feature.properties.username+' @ '+feature.properties.captured_at+'</p>';
+                                    $("#commonsimage").html(i);
+                                });
+                            }
+                        });
+
+                        
+                            
+                        mapillaryLayer.addTo(map)
+                    } // end success
+                    
+                }); // end ajax
+            }); // end onclick query_mapillary
+
 			$("#tabs").on('tabsactivate', function(evt,ui) {
 				if (ui.newTab.text() == "Overpass API") {
 					// Overpass-Tab aktiv
