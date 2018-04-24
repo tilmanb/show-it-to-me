@@ -191,7 +191,7 @@
 
 
             var osmMapnik = new L.TileLayer(
-                'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                '//{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                 {
                     minZoom: 3,
                     maxZoom: 19,
@@ -200,7 +200,7 @@
             );
 
             var osmOpenTopoMap = new L.TileLayer(
-                'http://server.opentopomap.org/{z}/{x}/{y}.png',
+                '//server.opentopomap.org/{z}/{x}/{y}.png',
                 {
                     minZoom: 3,
                     maxZoom: 16,
@@ -211,7 +211,7 @@
 
 
             var bingAerial = new L.QuadKeyTileLayer(
-                'http://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}?g=737&n=z',
+                '//ecn.t{s}.tiles.virtualearth.net/tiles/a{q}?g=737&n=z',
                 {
                     subdomains: "0123",
                     minZoom: 3,
@@ -221,7 +221,7 @@
             );
 
             var hillshading = new L.TileLayer(
-                'http://c.tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png',
+                '//c.tiles.wmflabs.org/hillshading/{z}/{x}/{y}.png',
                 {
                     attribution: "Hillshading by ??? from NASA SRTM data",
                     minZoom: 3,
