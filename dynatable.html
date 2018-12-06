@@ -71,7 +71,7 @@ out body;
 </textarea>
 <input type="button" value="append from Overpass API" id="overpass_button">
 <hr/>
-<input type="button" value="clear all" id="clear_button"> - <input type="button" value="style table" id="style_button">
+<input type="button" value="clear all" id="clear_button"> - <input type="button" value="style table" id="style_button"><span id="run_indicator"> - Query running!</span>
 <hr/>
 		
 		
@@ -105,6 +105,7 @@ out body;
 			});
 			
 			$("#overpass_button").on('click', function() {
+				$("#run_indicator").show();
 				ajaxRequestToAPIAndDisplay();
 			});
 			
@@ -134,9 +135,12 @@ out body;
 				$("#overpassquery").val(qry_pre + qry_in + qry_post)
 			});
 			
+			$("#run_indicator").hide();
+			
 			var clear = function() {
 				store = {};
 				numOfDatasets = 0;
+				$("#run_indicator").hide();
 				//$('#resultstable > tbody:last-child').append("<tr><td>i am again empty</td></tr>");
 			}
 			
@@ -183,16 +187,17 @@ out body;
 					  jsonp: 'jsonp',
 					  dataType: 'jsonp',
 					  success: function(data,status,xhr) {
-							if (data == undefined) {
-								// should not be reached
-								console.log("Barf!");
-							} else {
-								$.each(data.elements,
-									function(i,v) {
-										appendRowData(v.tags, v.id);
-									}
-								); // end each
-							}
+						$("#run_indicator").hide();
+						if (data == undefined) {
+							// should not be reached
+							console.log("Barf!");
+						} else {
+							$.each(data.elements,
+								function(i,v) {
+									appendRowData(v.tags, v.id);
+								}
+							); // end each
+						}
 					  } // end success
 				}) // end ajax
 			}
